@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="dictate"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_mic"
+        android:shortcutShortLabel="@string/dictate"
+        android:shortcutLongLabel="@string/dictate">
+        <intent
+            android:action="com.hemanth.dictask.DICTATE"
+            android:targetPackage="com.hemanth.dictask"
+            android:targetClass="com.hemanth.dictask.ui.VoiceActivity" />
+    </shortcut>
+</shortcuts>

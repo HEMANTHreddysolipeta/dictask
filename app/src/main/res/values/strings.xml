@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Dictask</string>
+    <string name="dictate">Dictate a task</string>
+    <string name="share_label">Add to Dictask</string>
+    <string name="widget_name">Dictask tasks</string>
+    <string name="widget_desc">Your tasks, with a mic button to dictate new ones</string>
+</resources>

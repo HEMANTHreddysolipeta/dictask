@@ -1,0 +1,22 @@
+{
+  "name": "dictask-desktop",
+  "productName": "Dictask",
+  "version": "0.2.0",
+  "description": "Dictask for Windows: voice to-dos with a desktop widget, synced with the phone app",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/app.js --bundle --format=iife --target=chrome130 --outfile=dist/app.js --log-level=warning",
+    "start": "npm run build && electron .",
+    "package": "npm run build && electron-packager . Dictask --platform=win32 --arch=x64 --out=out --overwrite --icon=icon.ico --ignore=^/src --ignore=^/out"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "44.9.3",
+    "esbuild": "0.28.2",
+    "firebase": "13.1.0"
+  },
+  "dependencies": {
+    "koffi": "3.3.4"
+  }
+}

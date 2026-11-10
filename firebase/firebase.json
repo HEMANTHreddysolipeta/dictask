@@ -1,0 +1,4 @@
+{
+  "firestore": { "rules": "firestore.rules", "database": "(default)", "location": "asia-south1" },
+  "auth": { "providers": { "emailPassword": true } }
+}

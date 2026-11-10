@@ -1,0 +1,16 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+.DS_Store
+
+# Firebase config tied to the dictask-hr project
+/app/google-services.json
+/firebase/.firebase/
+
+# Desktop (Electron) build output
+/desktop/node_modules/
+/desktop/dist/
+/desktop/out/
