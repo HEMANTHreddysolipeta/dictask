@@ -25,6 +25,31 @@ desktop widget), synced live between them.
 |---|---|
 | <img src="docs/windows-app.png" width="430"> | <img src="docs/windows-widget.png" width="430"> |
 
+### On Windows: capture a task without leaving what you're doing
+
+The best to-do app is the one that costs zero effort at the moment a task pops into your head. On a laptop that
+moment is usually mid-work: an email open, a call running, code half-written. Switching windows, finding the app,
+clicking "new task" and typing a date is enough friction that most tasks never get written down. Dictask removes it
+with two shortcuts:
+
+**🎙️ Ctrl+Shift+Space: dictate from anywhere**
+- Press it in **any app**: the widget comes forward and **starts listening straight away** (no clicking a mic button).
+- Say one task or several: *"reply to Ravi's email by 4, and book the dentist for Saturday morning"*.
+- Stop talking and it **stops by itself** after about 2 seconds of silence, splits what you said into tasks, and shows them
+  for a quick check. Then you're back to what you were doing.
+- About 5 seconds from thought to saved task, with your hands barely leaving the keyboard.
+
+**↗️ Hot corner: your list, one mouse flick away**
+- The desktop widget is **transparent and click-through**, so it can float over your apps all day without getting in the
+  way: clicks between the tasks go to the window underneath.
+- When you want it, **flick the mouse into the top-right corner**. The widget jumps to the front with the
+  **"Add a task" box already selected**, so you can glance at what's due or type a task right away.
+- Click back into your app and the widget **drops behind again** on its own. Flick again to toggle it away.
+- It reacts only to a quick flick, not to the cursor slowly drifting there, so it never pops up by accident.
+  It works on any monitor, and you can move it to another corner (or turn it off) from the tray icon → **Hot corner**.
+
+Together they mean your task list is **always visible but never in the way**, and adding to it never breaks your focus.
+
 ---
 
 ## Install and set up (about 5 minutes)
@@ -193,8 +218,10 @@ flowchart LR
 - Lists (`#Work`, `#Shopping`), priorities, repeating tasks (daily, weekdays, weekly, monthly, yearly)
 - Exact-time reminders with **Done** and **Snooze 15 min** right in the notification, plus a morning summary
 - Swipe to complete or delete, with undo; Material You colours and dark mode
-- **Windows widget:** transparent and click-through, floating over your apps. Flick the mouse to the
-  top-right corner, or press Alt+Shift+D, to bring it forward. Same voice capture, synced with the phone.
+- **Windows widget:** transparent and click-through, floating over your apps. **Ctrl+Shift+Space** dictates
+  from any app, and a **flick of the mouse into the top-right corner** brings the widget forward
+  ([details](#on-windows-capture-a-task-without-leaving-what-youre-doing)). A second shortcut to bring it forward is
+  shown in the tray menu (the first free one of Ctrl+Alt+D, Ctrl+Alt+Space, Alt+Shift+D).
 
 ## Tech
 
