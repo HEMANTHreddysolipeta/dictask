@@ -16,23 +16,38 @@ android {
         applicationId = "com.hemanth.dictask"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "1.0.0"
+        // Release builds ship with no key: each person pastes their own free Groq key on first run.
+        buildConfigField("String", "GROQ_API_KEY", "\"\"")
+    }
 
-        // Groq key comes from local.properties (never committed): GROQ_API_KEY=gsk_...
-        // A key pasted in the app's Settings overrides it.
-        val local = Properties().apply {
-            val f = rootProject.file("local.properties")
-            if (f.exists()) f.inputStream().use { load(it) }
+    // Release signing key lives outside the repo (~/Dictask-keys/keystore.properties); never committed.
+    val keyProps = Properties().apply {
+        val f = File(System.getProperty("user.home"), "Dictask-keys/keystore.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
+    signingConfigs {
+        if (keyProps.containsKey("storeFile")) create("release") {
+            storeFile = File(keyProps.getProperty("storeFile"))
+            storePassword = keyProps.getProperty("storePassword")
+            keyAlias = keyProps.getProperty("keyAlias")
+            keyPassword = keyProps.getProperty("keyPassword")
         }
-        buildConfigField("String", "GROQ_API_KEY", "\"${local.getProperty("GROQ_API_KEY", "")}\"")
     }
 
     buildTypes {
+        debug {
+            // Personal debug builds can pick up a key from local.properties (never committed): GROQ_API_KEY=gsk_...
+            val local = Properties().apply {
+                val f = rootProject.file("local.properties")
+                if (f.exists()) f.inputStream().use { load(it) }
+            }
+            buildConfigField("String", "GROQ_API_KEY", "\"${local.getProperty("GROQ_API_KEY", "")}\"")
+        }
         release {
             isMinifyEnabled = false
-            // Personal build: signed with the debug key so it installs straight from Android Studio / adb.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -47,10 +62,13 @@ android {
 }
 
 dependencies {
+    testImplementation(libs.junit)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
+    // Something transitive pulls in an old Fragment; activity-result permission requests need 1.3.0+.
+    implementation(libs.androidx.fragment)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.material3)

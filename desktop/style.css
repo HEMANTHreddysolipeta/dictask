@@ -166,3 +166,13 @@ body.glass .w .hide-x { opacity: 0; } body.glass .w:hover .hide-x { opacity: 1; 
 .w-add .wmic { flex: none; width: 108px; padding: 6px 6px; font-size: 12px; background: transparent; color: var(--sub); }
 body.glass .w-add .wmic { background: rgba(0, 0, 0, .45); border-color: rgba(255, 255, 255, .18); color: #fff; }
 .wmic option { color: var(--text); background: var(--card); }
+
+/* First-run Groq key card */
+.keycard { margin: 12px 16px 4px; padding: 14px 16px; border-radius: 12px; background: var(--accent-soft); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.keycard b { font-size: 15px; }
+.keycard ol { margin: 2px 0; padding-left: 20px; }
+.keycard a { color: var(--accent); font-weight: 600; }
+.keycard .row { display: flex; gap: 8px; }
+.keycard .row input { flex: 1; }
+.w-setup { margin: 6px 10px; padding: 8px 10px; border-radius: 10px; background: var(--accent-soft); font-size: 13px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+body.glass .w-setup { color: #fff; background: rgba(79, 91, 213, 0.55); }

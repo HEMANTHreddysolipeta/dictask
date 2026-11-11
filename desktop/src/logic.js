@@ -124,7 +124,9 @@ function resolvedTime(d) {
   if (t == null) return null;
   const isToday = d.date == null || d.date === today();
   const nm = nowMinute(), h = Math.floor(t / 60);
-  // "by 10" said at 5:30 pm means 10 pm, so a passed morning time today whose pm twin is still ahead moves to pm.
+  // "by 10" said at 5:30 pm means 10 pm, so a passed morning time today whose pm twin is still ahead moves to pm,
+  // unless "am" was actually said ("gym at 7am" stays 7 am; the date logic moves it to the next day).
+  if (d.amSaid) return t;
   return isToday && h >= 1 && h <= 11 && t < nm && t + 720 > nm ? t + 720 : t;
 }
 
@@ -204,7 +206,7 @@ fields:
 - title: short English action in the user's words, no date/time words; drop "remind me to", "I need to". update: "" unless renamed. complete/delete: "".
 - notes: extra details, else "".
 - due_date YYYY-MM-DD, due_time HH:mm 24h, null if not said (update: null = keep). morning 09:00, afternoon 14:00, evening 18:00, tonight 20:00. Times without am/pm = next occurrence after Now (at 17:21 "9.30" = 21:30). "9.30 or 10" = first one. "by X" = due X. "this month" = last day of month.
-- priority: high only for the task called urgent/important/asap. add default none; others default keep.
+- priority: high only for the task called urgent/important/asap; never copy it to other items. add default none; others default keep.
 - list: only if the user names one, else null.
 - recurrence: only if repeating was said; add default none, others keep. Repeating with a start ("1st of every month") → due_date = next such day.
 - remind_minutes_before: 0 for "remind me" at a time, N for "N min before", else null.
@@ -234,7 +236,7 @@ const parseRec = (s) => ({ daily: 'DAILY', weekdays: 'WEEKDAYS', weekly: 'WEEKLY
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 const str = (v) => (v == null || v === 'null' || String(v).trim() === '' ? null : String(v).trim());
 
-export function readDrafts(content, ids, lists, open) {
+export function readDrafts(content, ids, lists, open, text = '') {
   const arr = JSON.parse(content).tasks || [];
   const out = [];
   for (const o of arr) {
@@ -254,7 +256,52 @@ export function readDrafts(content, ids, lists, open) {
       remindBefore: o.remind_minutes_before == null ? null : o.remind_minutes_before | 0,
     });
   }
-  return repairEdits(out, open);
+  return guardPriorities(text, repairEdits(out, open))
+    .map((d) => (d.time != null ? { ...d, amSaid: saidAm(text, Math.floor(d.time / 60)) } : d));
+}
+
+/** True if text says this hour with am / a.m. / "in the morning" ("7am", "7:30 a.m.", "7 in the morning"). */
+export function saidAm(text, hour) {
+  if (hour < 1 || hour > 11) return false;
+  return new RegExp(`\\b${hour}(?:[:.]\\d{2})?\\s*(?:a\\.?\\s?m\\b\\.?|in the morning\\b)`, 'i').test(text);
+}
+
+// ---- "it's urgent" belongs to one task, not all of them (same as the phone's Groq.guardPriorities) ----
+const PRIORITY_WORD = /\b(urgent(ly)?|important|asap|a\.s\.a\.p|priority|critical|immediately|right away)\b/i;
+
+/**
+ * Models spread a priority word to every task in the sentence. A priority stays only if a priority word
+ * was said at all and, with several tasks, falls in that task's own stretch of the sentence (each task is
+ * located by its title words; the first stretch also covers a leading "Urgent:"). Tasks that can't be
+ * located keep the model's answer.
+ */
+export function guardPriorities(text, drafts) {
+  const has = (d) => d.priority != null && d.priority !== 0;
+  const strip = (d) => ({ ...d, priority: d.kind === 'ADD' ? 0 : null });
+  if (!drafts.some(has)) return drafts;
+  if (!PRIORITY_WORD.test(text)) return drafts.map((d) => (has(d) ? strip(d) : d));
+  if (drafts.length === 1) return drafts;
+  const lower = text.toLowerCase();
+  let from = 0;
+  const firstHit = (keys, start) => {
+    const hits = keys.map((k) => { const re = new RegExp('\\b' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'); re.lastIndex = start; const m = re.exec(lower); return m ? m.index : null; }).filter((x) => x != null);
+    return hits.length ? Math.min(...hits) : null;
+  };
+  const anchors = drafts.map((d) => {
+    const keys = words(d.title);
+    const a = firstHit(keys, from) ?? firstHit(keys, 0);
+    if (a != null) from = a + 1;
+    return a;
+  });
+  if (anchors.some((a) => a == null)) return drafts;
+  const starts = [...anchors].sort((x, y) => x - y);
+  return drafts.map((d, i) => {
+    if (!has(d)) return d;
+    const a = anchors[i];
+    const begin = a === starts[0] ? 0 : a;
+    const end = starts.find((s) => s > a) ?? text.length;
+    return PRIORITY_WORD.test(text.slice(begin, end)) ? d : strip(d);
+  });
 }
 
 // ---- safety net for weaker models and misheard speech (same as the phone) ----

@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('dictask', {
   parse: (body) => call('parse', body),
   getSettings: () => call('settings:get'),
   setSettings: (patch) => call('settings:set', patch),
+  checkKey: (key) => call('check-key', key),
+  openKeys: () => call('open-keys'),
   notify: (n) => call('notify', n),
   openMain: (extra) => call('open-main', extra),
   hideWidget: () => call('hide-widget'),

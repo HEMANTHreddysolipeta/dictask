@@ -1,7 +1,7 @@
 {
   "name": "dictask-desktop",
   "productName": "Dictask",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Dictask for Windows: voice to-dos with a desktop widget, synced with the phone app",
   "main": "main.js",
   "private": true,

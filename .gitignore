@@ -14,3 +14,6 @@ local.properties
 /desktop/node_modules/
 /desktop/dist/
 /desktop/out/
+
+# Release downloads are attached to GitHub Releases, not committed
+/release-files/

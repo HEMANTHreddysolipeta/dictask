@@ -84,8 +84,9 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit) {
                 label = { Text("Groq API key") }, singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                supportingText = { Text("Free key from console.groq.com. Audio is sent to Groq only while you dictate.") },
+                supportingText = { Text("Your own free key. Audio is sent to Groq only while you dictate.") },
             )
+            androidx.compose.material3.TextButton({ openGroqKeys(ctx) }) { Text("Get a free key at console.groq.com/keys") }
             Text("Spoken language", style = MaterialTheme.typography.bodyMedium)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("en" to "English", "" to "Auto-detect", "hi" to "Hindi", "te" to "Telugu").forEach { (code, name) ->

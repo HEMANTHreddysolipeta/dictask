@@ -66,6 +66,24 @@ function signInHtml(compact) {
   </form>`;
 }
 
+// ---------------------------------------------------------------- first run: Groq key
+
+function keyCardHtml() {
+  return `<form class="keycard" data-form="groqkey">
+    <b>Set up voice in 1 minute</b>
+    <div class="small">Dictask uses Groq's free AI to understand what you say. You need your own free key:</div>
+    <ol class="small">
+      <li><a href="#" data-act="openkeys">Open console.groq.com/keys</a> and sign in (Google sign-in works, no card needed)</li>
+      <li>Click <b>Create API Key</b>, give it any name, and copy it</li>
+      <li>Paste it here</li>
+    </ol>
+    <div class="row"><input name="key" type="password" placeholder="gsk_…" autocomplete="off">
+      <button class="btn" ${ui.keyBusy ? 'disabled' : ''}>${ui.keyBusy ? 'Checking…' : 'Check &amp; save'}</button></div>
+    ${ui.keyMsg ? `<div class="error">${esc(ui.keyMsg)}</div>` : ''}
+    <div class="small muted">Your key stays on this computer. Audio goes to Groq only while you dictate.</div>
+  </form>`;
+}
+
 // ---------------------------------------------------------------- widget
 
 function renderWidget() {
@@ -84,6 +102,7 @@ function renderWidget() {
   const hadFocus = document.activeElement === addEl;
   const open = S.open();
   root.innerHTML = `<div class="w">${head(esc(bits))}
+    ${settings.groqKey ? '' : '<div class="w-setup">Voice needs your free Groq key. <button class="btn" data-act="open">Set it up</button></div>'}
     <div class="w-list">${!S.ready ? '<div class="empty">Loading…</div>' : open.length ? sectioned(open) : `<div class="empty">Nothing to do 🎉<br><span class="small">Press <kbd>${hotkey}</kbd> and say a task</span></div>`}</div>
     <form class="w-add" data-form="quick"><input name="q" placeholder="Add a task… e.g. pay rent friday" autocomplete="off">
       <select class="wmic" data-vmic data-short title="Microphone for dictation">${micOptions(true)}</select></form>
@@ -133,6 +152,7 @@ function renderMain() {
       <div class="acct">Synced as ${esc(S.account().email)}</div></aside>
     ${ui.view === 'settings' ? `<div class="center">${settingsHtml()}${toastHtml()}</div>` : `
     <section class="center">
+      ${settings.groqKey ? '' : keyCardHtml()}
       <form class="bar" data-form="quick">
         <input class="q" name="q" placeholder="Add a task, or type an edit: &quot;move gym to 7am&quot;" autocomplete="off">
         <button class="iconbtn mic" type="button" data-act="dictate" title="Dictate (${hotkey})">${icon('mic')}</button>
@@ -365,7 +385,7 @@ async function parse(text) {
   const open = L.sortTasks(S.open());
   const { body, ids, lists } = L.buildParseRequest(text, open);
   const content = await api.parse(body);
-  return L.readDrafts(content, ids, lists, open);
+  return L.readDrafts(content, ids, lists, open, text);
 }
 
 // ---------------------------------------------------------------- events
@@ -409,6 +429,7 @@ root.addEventListener('click', async (e) => {
     case 'signout': await S.signOut(); break;
     case 'mictest': toggleMicTest(); break;
     case 'create': submitSignIn(el.closest('form'), true); break;
+    case 'openkeys': e.preventDefault(); api.openKeys(); break;
   }
 });
 
@@ -426,6 +447,15 @@ root.addEventListener('submit', async (e) => {
   e.preventDefault();
   const f = e.target;
   if (f.dataset.form === 'signin') return submitSignIn(f, false);
+  if (f.dataset.form === 'groqkey') {
+    const key = f.key.value.trim();
+    if (!key) return;
+    ui.keyBusy = true; ui.keyMsg = ''; render();
+    try { await api.checkKey(key); settings = await api.getSettings(); toast('Key works. Press ' + hotkey + ' and say your tasks!'); }
+    catch (err) { ui.keyMsg = err.message; }
+    ui.keyBusy = false; render();
+    return;
+  }
   if (f.dataset.form === 'quick') {
     const text = f.q.value.trim();
     if (!text) return;

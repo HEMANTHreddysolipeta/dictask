@@ -13,6 +13,8 @@ firebaseBom = "33.7.0"
 googleServices = "4.4.2"
 coroutinesPlay = "1.8.1"
 work = "2.9.1"
+junit = "4.13.2"
+fragment = "1.8.5"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -33,6 +35,8 @@ firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
 firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore" }
 coroutines-play = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutinesPlay" }
 work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-fragment = { group = "androidx.fragment", name = "fragment-ktx", version.ref = "fragment" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

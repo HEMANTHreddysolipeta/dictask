@@ -45,13 +45,17 @@ data class Draft(
     val remindBefore: Int?,
     val kind: Kind = Kind.ADD,
     val targetId: Long? = null,
+    /** The person explicitly said "am" / "in the morning" for this hour, so it must never move to pm. */
+    val amSaid: Boolean = false,
 ) {
     /**
      * "by 10" said at 5:30 pm means 10 pm. Models sometimes return 10:00, which is already gone today,
-     * so a morning time today that has passed (while its pm twin hasn't) is moved to pm.
+     * so a morning time today that has passed (while its pm twin hasn't) is moved to pm,
+     * unless "am" was actually said ("gym at 7am" stays 7 am; the date logic moves it to the next day).
      */
     private fun resolvedTime(): LocalTime? {
         val t = time ?: return null
+        if (amSaid) return t
         val today = date == null || date == LocalDate.now()
         val now = LocalTime.now()
         return if (today && t.hour in 1..11 && t.isBefore(now) && t.plusHours(12).isAfter(now)) t.plusHours(12) else t
@@ -159,6 +163,21 @@ object Groq {
         if (norm in silenceHallucinations) "" else text
     }
 
+    /** Checks a key with a free, tiny request. Returns null if it works, else a message for the person. */
+    suspend fun checkKey(key: String): String? = withContext(Dispatchers.IO) {
+        val k = key.trim()
+        if (!k.startsWith("gsk_")) return@withContext "Groq keys start with gsk_. Copy the whole key."
+        runCatching {
+            http.newCall(Request.Builder().url("$BASE/models").header("Authorization", "Bearer $k").build()).execute().use { r ->
+                when {
+                    r.isSuccessful -> null
+                    r.code == 401 -> "Groq says this key isn't valid. Copy it again from console.groq.com/keys."
+                    else -> "Groq answered ${r.code}. Try again in a minute."
+                }
+            }
+        }.getOrElse { "Can't reach Groq. Check your internet connection." }
+    }
+
     /**
      * Reads new tasks and edits to [openTasks] out of what the person said.
      * Edits only ever point at ids that exist in [openTasks].
@@ -201,7 +220,7 @@ fields:
 - title: short English action in the user's words, no date/time words; drop "remind me to", "I need to". update: "" unless renamed. complete/delete: "".
 - notes: extra details, else "".
 - due_date YYYY-MM-DD, due_time HH:mm 24h, null if not said (update: null = keep). morning 09:00, afternoon 14:00, evening 18:00, tonight 20:00. Times without am/pm = next occurrence after Now (at 17:21 "9.30" = 21:30). "9.30 or 10" = first one. "by X" = due X. "this month" = last day of month.
-- priority: high only for the task called urgent/important/asap. add default none; others default keep.
+- priority: high only for the task called urgent/important/asap; never copy it to other items. add default none; others default keep.
 - list: only if the user names one, else null.
 - recurrence: only if repeating was said; add default none, others keep. Repeating with a start ("1st of every month") → due_date = next such day.
 - remind_minutes_before: 0 for "remind me" at a time, N for "N min before", else null.
@@ -280,7 +299,57 @@ fields:
                 remindBefore = if (o.isNull("remind_minutes_before")) null else o.optInt("remind_minutes_before"),
             )
         }
-        repairEdits(parsed, openTasks)
+        guardPriorities(text, repairEdits(parsed, openTasks))
+            .map { d -> d.time?.let { d.copy(amSaid = saidAm(text, it.hour)) } ?: d }
+    }
+
+    /** True if [text] says this hour with am / a.m. / "in the morning" ("7am", "7:30 a.m.", "7 in the morning"). */
+    internal fun saidAm(text: String, hour: Int): Boolean {
+        if (hour !in 1..11) return false
+        return Regex("\\b$hour(?:[:.]\\d{2})?\\s*(?:a\\.?\\s?m\\b\\.?|in the morning\\b)", RegexOption.IGNORE_CASE).containsMatchIn(text)
+    }
+
+    private val priorityWord = Regex(
+        "\\b(urgent(ly)?|important|asap|a\\.s\\.a\\.p|priority|critical|immediately|right away)\\b",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /**
+     * Models spread "it's urgent" from one task to every task in the sentence (both gpt-oss sizes do it,
+     * and 120b even rewrites each task's words to include it). So priority is checked against what was
+     * actually said, in code:
+     *  - no priority word anywhere: no task gets a priority;
+     *  - several tasks: each task is located in the sentence by its title words, the sentence is cut into
+     *    one segment per task (the first also covers a leading "Urgent:"), and a priority stays only if a
+     *    priority word is in that task's own segment.
+     * If a task can't be located (e.g. an edit with no title), the model's answer is kept.
+     * A dropped priority becomes none for a new task and "unchanged" for an edit.
+     */
+    internal fun guardPriorities(text: String, drafts: List<Draft>): List<Draft> {
+        fun strip(d: Draft) = d.copy(priority = if (d.kind == Kind.ADD) Priority.NONE else null)
+        fun hasPriority(d: Draft) = d.priority != null && d.priority != Priority.NONE
+        if (drafts.none(::hasPriority)) return drafts
+        if (!priorityWord.containsMatchIn(text)) return drafts.map { if (hasPriority(it)) strip(it) else it }
+        if (drafts.size == 1) return drafts
+
+        val lower = text.lowercase()
+        var from = 0
+        val anchors = drafts.map { d ->
+            val keys = words(d.title)
+            fun firstHit(start: Int) = keys.mapNotNull { k ->
+                Regex("\\b${Regex.escape(k)}").find(lower, start)?.range?.first
+            }.minOrNull()
+            (firstHit(from) ?: firstHit(0))?.also { from = it + 1 }
+        }
+        if (anchors.any { it == null }) return drafts
+        val starts = anchors.map { it!! }.sorted()
+        return drafts.mapIndexed { i, d ->
+            if (!hasPriority(d)) return@mapIndexed d
+            val a = anchors[i]!!
+            val begin = if (a == starts.first()) 0 else a
+            val end = starts.firstOrNull { it > a } ?: text.length
+            if (priorityWord.containsMatchIn(text.substring(begin, end))) d else strip(d)
+        }
     }
 
     private val editVerb = Regex("^(change|move|reschedule|postpone|update|edit|shift|push|rename|make)\\b", RegexOption.IGNORE_CASE)

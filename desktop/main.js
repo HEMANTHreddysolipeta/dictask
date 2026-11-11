@@ -215,6 +215,20 @@ handle('parse', async (body) => {
   return json.choices[0].message.content;
 });
 
+// First run: each person brings their own free Groq key. Checked with a tiny free request before it's saved.
+handle('check-key', async (key) => {
+  const k = String(key || '').trim();
+  if (!k.startsWith('gsk_')) throw new Error('Groq keys start with gsk_. Copy the whole key.');
+  let r;
+  try { r = await fetch(GROQ + '/models', { headers: { Authorization: 'Bearer ' + k } }); }
+  catch { throw new Error("Can't reach Groq. Check your internet connection."); }
+  if (r.status === 401) throw new Error("Groq says this key isn't valid. Copy it again from console.groq.com/keys.");
+  if (!r.ok) throw new Error(`Groq answered ${r.status}. Try again in a minute.`);
+  setSetting({ groqKey: k });
+  return true;
+});
+handle('open-keys', () => shell.openExternal('https://console.groq.com/keys'));
+
 handle('settings:get', () => settings);
 function setSetting(patch) {
   settings = { ...settings, ...patch }; saveSettings();

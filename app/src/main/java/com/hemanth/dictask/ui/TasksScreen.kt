@@ -114,6 +114,7 @@ fun TasksScreen(vm: MainVm, act: MainActivity, onSettings: () -> Unit) {
     val snack = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val quickFocus = remember { FocusRequester() }
+    var hasKey by remember { mutableStateOf(vm.prefs.groqKey.isNotBlank()) }
 
     // Opened from the widget's "+" or a task tapped on the widget.
     LaunchedEffect(act.openAdd) {
@@ -250,6 +251,10 @@ fun TasksScreen(vm: MainVm, act: MainActivity, onSettings: () -> Unit) {
                 items(lists) { l ->
                     FilterChip(listFilter == l, { listFilter = if (listFilter == l) null else l }, { Text("# $l") })
                 }
+            }
+            if (!hasKey) GroqKeyCard(vm.prefs) {
+                hasKey = true
+                scope.launch { snack.showSnackbar("Key works. Tap the mic and say your tasks!") }
             }
             when {
                 all == null -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
