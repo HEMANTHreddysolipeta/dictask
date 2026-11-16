@@ -60,7 +60,7 @@ for the Windows app, a free Dictask account. No credit card anywhere.
 | | Android | Windows |
 |---|---|---|
 | Works on | Android 8.0 or newer | Windows 10 or 11 (64-bit) |
-| Download | [`Dictask-1.0.0-android.apk`](https://github.com/HEMANTHreddysolipeta/dictask/releases/latest) (12 MB) | [`Dictask-1.0.0-windows-x64.zip`](https://github.com/HEMANTHreddysolipeta/dictask/releases/latest) (152 MB) |
+| Download | [`Dictask-1.1.0-android.apk`](https://github.com/HEMANTHreddysolipeta/dictask/releases/latest) (12 MB) | [`Dictask-1.1.0-windows-x64.zip`](https://github.com/HEMANTHreddysolipeta/dictask/releases/latest) (152 MB) |
 | Account needed? | No (only for syncing with a laptop) | Yes, free, created in the app |
 
 ### Step 1: Get your free Groq key (do this once, use it on every device)
@@ -77,7 +77,7 @@ for the Windows app, a free Dictask account. No credit card anywhere.
 <summary><b>Step 2a: Install on Android</b> (click to expand)</summary>
 
 1. On your phone, open the [latest release](https://github.com/HEMANTHreddysolipeta/dictask/releases/latest) and tap
-   **`Dictask-1.0.0-android.apk`** to download it.
+   **`Dictask-1.1.0-android.apk`** to download it.
 2. When the download finishes, tap **Open** (or find it in **Files → Downloads**).
 3. If Android says *"For your security, your phone is not allowed to install unknown apps from this source"*:
    tap **Settings**, turn on **Allow from this source**, then go back.
@@ -105,7 +105,7 @@ for the Windows app, a free Dictask account. No credit card anywhere.
 <details>
 <summary><b>Step 2b: Install on Windows</b> (click to expand)</summary>
 
-1. Download **`Dictask-1.0.0-windows-x64.zip`** from the
+1. Download **`Dictask-1.1.0-windows-x64.zip`** from the
    [latest release](https://github.com/HEMANTHreddysolipeta/dictask/releases/latest).
 2. Right-click the zip → **Extract All…** → choose a folder you'll keep, for example `C:\Users\<you>\Apps\Dictask`.
    (Run it from the extracted folder, not from inside the zip.)

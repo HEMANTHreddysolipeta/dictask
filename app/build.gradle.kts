@@ -16,8 +16,8 @@ android {
         applicationId = "com.hemanth.dictask"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.0.0"
+        versionCode = 4
+        versionName = "1.1.0"
         // Release builds ship with no key: each person pastes their own free Groq key on first run.
         buildConfigField("String", "GROQ_API_KEY", "\"\"")
     }

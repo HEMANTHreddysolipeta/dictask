@@ -126,6 +126,16 @@ function dictate() {
   widget.webContents.send('dictate');
 }
 
+/** Puts the widget in a corner of the screen (the same corner the mouse flick uses). */
+function snapToCorner(c) {
+  if (!widget || widget.isDestroyed() || !c || c === 'off') return;
+  const d = screen.getDisplayMatching(widget.getBounds()).workArea, b = widget.getBounds(), m = 16;
+  const x = c.endsWith('left') ? d.x + m : d.x + d.width - b.width - m;
+  const y = c.startsWith('top') ? d.y + m : d.y + d.height - b.height - m;
+  widget.setBounds({ x, y, width: b.width, height: b.height });
+  winState.widget = widget.getBounds(); saveState();
+}
+
 function applyLock() {
   if (!widget || widget.isDestroyed()) return;
   widget.setMovable(!settings.locked); widget.setResizable(!settings.locked);
@@ -139,7 +149,7 @@ function buildTray() {
     { type: 'separator' },
     { label: 'Show desktop widget', type: 'checkbox', checked: !!(widget && widget.isVisible()), click: (i) => (i.checked ? showWidget() : hideWidget()) },
     { label: 'Lock widget in place', type: 'checkbox', checked: settings.locked, click: (i) => setSetting({ locked: i.checked }) },
-    { label: 'Hot corner (flick the mouse there)', submenu: [['top-right', 'Top right'], ['top-left', 'Top left'], ['bottom-left', 'Bottom left'], ['bottom-right', 'Bottom right'], ['off', 'Off']]
+    { label: 'Widget corner (flick the mouse there)', submenu: [['top-right', 'Top right'], ['top-left', 'Top left'], ['bottom-left', 'Bottom left'], ['bottom-right', 'Bottom right'], ['off', 'Off']]
       .map(([v, l]) => ({ label: l, type: 'radio', checked: settings.corner === v, click: () => setSetting({ corner: v }) })) },
     { label: 'Transparent floating widget', type: 'checkbox', checked: settings.glass, click: (i) => setSetting({ glass: i.checked }) },
     { label: 'Widget background', enabled: settings.glass, submenu: [[0, 'Clear'], [30, 'Light'], [55, 'Medium'], [75, 'Dark'], [92, 'Solid']]
@@ -236,6 +246,7 @@ function setSetting(patch) {
   settings = { ...settings, ...patch }; saveSettings();
   if ('onTop' in patch || 'glass' in patch) placeWidget();
   if ('locked' in patch) applyLock();
+  if ('corner' in patch) snapToCorner(patch.corner);
   if ('widget' in patch) { if (settings.widget) showWidget(); else hideWidget(); }
   if ('startup' in patch) applyStartup();
   broadcast('settings', settings); buildTray();
@@ -257,6 +268,26 @@ handle('peek-key', () => (PEEK_KEY || 'none').replace('Control', 'Ctrl'));
 handle('peek-done', () => unpeek(true));
 // Transparent widget: clicks on empty space go to the window underneath; tasks and buttons still take clicks.
 ipcMain.on('mics', (_e, list) => { micList = Array.isArray(list) ? list.slice(0, 20) : []; buildTray(); });
+// Moving / resizing the widget by hand: the CSS drag area stops working once click-through has been switched on,
+// so the page reports the mouse (screen coordinates) and the window follows it here.
+let dragFrom = null;
+ipcMain.on('drag', (_e, phase, kind, x, y) => {
+  if (!widget || widget.isDestroyed() || settings.locked) return;
+  if (phase === 'start') { dragFrom = { kind, x, y, b: widget.getBounds() }; return; }
+  if (!dragFrom) return;
+  const dx = Math.round(x - dragFrom.x), dy = Math.round(y - dragFrom.y), b = dragFrom.b, k = dragFrom.kind;
+  if (k === 'move') widget.setBounds({ x: b.x + dx, y: b.y + dy, width: b.width, height: b.height });
+  else {
+    // k is the edge(s) being dragged: n / s / e / w or a corner like "se".
+    let { x: nx, y: ny, width: w, height: h } = b;
+    if (k.includes('e')) w = Math.max(260, b.width + dx);
+    if (k.includes('s')) h = Math.max(200, b.height + dy);
+    if (k.includes('w')) { w = Math.max(260, b.width - dx); nx = b.x + b.width - w; }
+    if (k.includes('n')) { h = Math.max(200, b.height - dy); ny = b.y + b.height - h; }
+    widget.setBounds({ x: nx, y: ny, width: w, height: h });
+  }
+  if (phase === 'end') { dragFrom = null; winState.widget = widget.getBounds(); saveState(); }
+});
 ipcMain.on('click-through', (_e, on) => { if (widget && !widget.isDestroyed()) widget.setIgnoreMouseEvents(!!on && settings.glass, { forward: true }); });
 handle('is-packaged', () => app.isPackaged);
 

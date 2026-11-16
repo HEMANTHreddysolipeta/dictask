@@ -108,7 +108,7 @@ function renderWidget() {
     <div class="w-list">${!S.ready ? '<div class="empty">Loading…</div>' : open.length ? sectioned(open) : `<div class="empty">Nothing to do 🎉<br><span class="small">Press <kbd>${hotkey}</kbd> and say a task</span></div>`}</div>
     <form class="w-add" data-form="quick"><input name="q" placeholder="Add a task… e.g. pay rent friday" autocomplete="off">
       <select class="wmic" data-vmic data-short title="Microphone for dictation">${micOptions(true)}</select></form>
-    ${voiceHtml()}${toastHtml()}</div>`;
+    ${voiceHtml()}${toastHtml()}<div class="w-grip" title="Drag to resize"></div></div>`;
   document.querySelector('.w-list').scrollTop = scroll;
   const ni = document.querySelector('.w-add input');
   ni.value = typed; if (hadFocus) { ni.focus(); ni.setSelectionRange(typed.length, typed.length); }
@@ -234,8 +234,8 @@ function settingsHtml() {
     ${tog('notify', 'Reminders on this laptop', 'Windows notifications at reminder time (your phone reminds you too)')}
     <h3>Desktop</h3>
     ${tog('widget', 'Show desktop widget', 'Sits on your desktop under your apps and stays through Win+D')}
-    ${tog('locked', 'Lock widget in place', 'Turn off to drag it by its header and resize it from the edges')}
-    <div>Hot corner: flick the mouse quickly into this corner to bring the widget in front</div>
+    ${tog('locked', 'Lock widget in place', 'Turn off to drag it by its header and resize it from any edge')}
+    <div>Widget corner: puts the widget there. Flick the mouse quickly into that corner to bring it in front</div>
     <div class="chips">${chip('corner', 'top-right', 'Top right')}${chip('corner', 'top-left', 'Top left')}${chip('corner', 'bottom-left', 'Bottom left')}${chip('corner', 'bottom-right', 'Bottom right')}${chip('corner', 'off', 'Off')}</div>
     <div class="opt"><span>Bring the widget in front</span><kbd>${peekKey}</kbd></div>
     ${tog('glass', 'Transparent floating widget', 'Floats over your apps; clicks between tasks go to the app underneath')}
@@ -569,12 +569,39 @@ function startReminders() {
 
 // ---------------------------------------------------------------- transparent widget: click-through
 
+/** Drag the header to move the widget, the bottom-right corner to resize it (unless it is locked in place). */
+let dragging = false;
+function setupDrag() {
+  // Handles live outside the re-rendered content so they are always there.
+  for (const e of ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']) {
+    const d = document.createElement('div'); d.className = 'rz ' + e; d.dataset.edge = e; document.body.appendChild(d);
+  }
+  document.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || settings.locked) return;
+    const t = e.target instanceof Element ? e.target : null;
+    const kind = t?.closest('.w-grip') ? 'se' : t?.closest('.rz') ? t.closest('.rz').dataset.edge : t?.closest('.w-head, .voice .vhead') && !t.closest('button, input, select') ? 'move' : null;
+    if (!kind) return;
+    e.preventDefault();
+    dragging = true; document.body.classList.add('dragging');
+    try { t.setPointerCapture(e.pointerId); } catch {}
+    api.drag('start', kind, e.screenX, e.screenY);
+    const move = (ev) => api.drag('move', kind, ev.screenX, ev.screenY);
+    const up = (ev) => {
+      api.drag('end', kind, ev.screenX, ev.screenY);
+      dragging = false; document.body.classList.remove('dragging');
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+    };
+    addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+  });
+}
+
 /** Over a task, button or the add box the widget takes the click; anywhere else it passes to the app beneath. */
 function setupClickThrough() {
   let through = null;
   const set = (v) => { if (v !== through) { through = v; api.clickThrough(v); } };
-  const solid = '.row, button, input, .voice, .w-head, .signin, .toast, .w-add, .empty';
+  const solid = '.row, button, input, select, .voice, .w-head, .w-grip, .rz, .signin, .toast, .w-add, .empty';
   document.addEventListener('mousemove', (e) => {
+    if (dragging) return;
     const t = e.target instanceof Element ? e.target : null;
     set(!(t && t.closest(solid)) && !ui.voice);
   });
@@ -597,11 +624,11 @@ function setupClickThrough() {
     document.body.style.setProperty('--glass-hover', Math.min(1, a + 0.12).toFixed(2));
     document.body.style.setProperty('--glass-line', a > 0 ? '0.10' : '0');
   };
-  if (MODE === 'widget') setupClickThrough();
+  if (MODE === 'widget') { setupClickThrough(); setupDrag(); }
   bodyClass();
-  api.on('settings', bodyClass);
   api.on('peek', () => { if (!ui.voice) document.querySelector('.w-add input')?.focus(); });
-  api.on('settings', (s) => { settings = s; if (!document.querySelector('.settings')?.contains(document.activeElement)) render(); });
+  // bodyClass must run after the new settings are stored, or locking only shows up after a restart.
+  api.on('settings', (s) => { settings = s; bodyClass(); if (!document.querySelector('.settings')?.contains(document.activeElement)) render(); });
   api.on('dictate', startDictation);
   api.on('open', (extra) => { const p = new URLSearchParams(extra); if (p.get('task')) { ui.selected = p.get('task'); ui.view = 'tasks'; ui.tab = 'all'; render(); } });
   if (params.get('task')) { ui.selected = params.get('task'); ui.tab = 'all'; }

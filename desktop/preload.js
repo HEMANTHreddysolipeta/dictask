@@ -21,5 +21,6 @@ contextBridge.exposeInMainWorld('dictask', {
   peekDone: () => call('peek-done'),
   clickThrough: (on) => ipcRenderer.send('click-through', on),
   reportMics: (list) => ipcRenderer.send('mics', list),
+  drag: (phase, kind, x, y) => ipcRenderer.send('drag', phase, kind, x, y),
   on: (ch, fn) => { if (['dictate', 'settings', 'open', 'peek'].includes(ch)) ipcRenderer.on(ch, (_e, ...a) => fn(...a)); },
 });

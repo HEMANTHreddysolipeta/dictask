@@ -57,7 +57,22 @@ textarea { resize: vertical; }
 
 /* ---- desktop widget ---- */
 .w { position: absolute; inset: 6px; display: flex; flex-direction: column; background: var(--widget); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; }
-.w-head { display: flex; align-items: center; gap: 6px; padding: 10px 10px 8px 14px; -webkit-app-region: drag; user-select: none; }
+.w-head { display: flex; align-items: center; gap: 6px; padding: 10px 10px 8px 14px; user-select: none; cursor: grab; }
+body.dragging, body.dragging * { cursor: grabbing !important; }
+.w-grip { position: absolute; right: 2px; bottom: 2px; width: 16px; height: 16px; cursor: nwse-resize; z-index: 5; opacity: .45;
+  background: linear-gradient(135deg, transparent 50%, currentColor 50%, currentColor 60%, transparent 60%, transparent 72%, currentColor 72%, currentColor 82%, transparent 82%); }
+.w-grip:hover { opacity: .9; }
+body.locked .w-grip, body.locked .rz { display: none; }
+/* Locked: nothing to drag, so plain arrow everywhere (text cursor only where you type). */
+body.locked .w, body.locked .w * { cursor: default !important; }
+body.locked .w input { cursor: text !important; }
+/* Resize handles along every edge of the widget window (the clear 6px border around the card). */
+.rz { position: fixed; z-index: 20; }
+.rz.n, .rz.s { left: 12px; right: 12px; height: 10px; cursor: ns-resize; } .rz.n { top: 0; } .rz.s { bottom: 0; }
+.rz.e, .rz.w { top: 12px; bottom: 12px; width: 10px; cursor: ew-resize; } .rz.e { right: 0; } .rz.w { left: 0; }
+.rz.ne, .rz.nw, .rz.se, .rz.sw { width: 18px; height: 18px; }
+.rz.ne { top: 0; right: 0; cursor: nesw-resize; } .rz.sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.rz.nw { top: 0; left: 0; cursor: nwse-resize; } .rz.se { bottom: 0; right: 0; cursor: nwse-resize; }
 .w-head .name { font-weight: 700; font-size: 15px; }
 .w-head .counts { flex: 1; font-size: 12px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .w-head button { -webkit-app-region: no-drag; }
@@ -133,7 +148,8 @@ textarea { resize: vertical; }
 .toast button { color: var(--accent); font-weight: 700; }
 kbd { font: 12px Consolas, monospace; background: var(--hover); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
 
-body.locked .w-head, body.locked .voice .vhead { -webkit-app-region: no-drag; }
+body.locked .w-head, body.locked .voice .vhead, body.widget .voice .vhead { -webkit-app-region: no-drag; }
+body.widget:not(.locked) .voice .vhead { cursor: grab; }
 .m > * { min-height: 0; }
 .center { overflow: hidden; }
 .meter { height: 6px; border-radius: 6px; background: var(--hover); overflow: hidden; }
