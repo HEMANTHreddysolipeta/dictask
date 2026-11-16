@@ -17,6 +17,7 @@ class Repo(context: Context) {
     suspend fun pending() = dao.pending()
     val pendingFlow: Flow<List<Task>> = dao.pendingFlow()
     suspend fun get(id: Long) = dao.get(id)
+    suspend fun listNames() = dao.listNames()
 
     /** Marks a local edit: newest-wins timestamp, and whether it is going to the cloud. */
     private fun stamp(t: Task) = t.copy(updatedAt = System.currentTimeMillis(), synced = t.synced || Sync.signedIn)

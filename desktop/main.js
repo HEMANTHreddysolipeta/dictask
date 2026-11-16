@@ -192,15 +192,17 @@ handle('transcribe', async (audio, mime, vocab, meta) => {
   const words = [...new Set((vocab || []).map((w) => w.trim()).filter(Boolean))].join(', ').slice(0, 500);
   const form = new FormData();
   // large-v3 gets names right far more often ("Akshita" vs turbo's "Akshitar"); turbo is the faster option.
-  form.append('model', settings.sttModel || STT_MODEL);
+  // Non-English: Whisper's translate mode turns Telugu / Hindi / mixed speech straight into English (large-v3 only).
+  const translate = settings.language !== 'en';
+  form.append('model', translate ? 'whisper-large-v3' : settings.sttModel || STT_MODEL);
   form.append('response_format', 'json');
   form.append('temperature', '0');
   form.append('prompt', 'To-do list: remind me to call, buy, pay, email, meeting tomorrow at 5 pm, next Monday.' + (words ? ` Words I use: ${words}.` : ''));
-  if (settings.language) form.append('language', settings.language);
+  if (!translate) form.append('language', settings.language);
   form.append('file', new Blob([audio], { type: mime }), mime.includes('wav') ? 'dictation.wav' : 'dictation.webm');
   // Keep the last recording + a short log, so a bad transcription can be checked afterwards.
   try { fs.writeFileSync(path.join(dataDir, mime.includes('wav') ? 'last-dictation.wav' : 'last-dictation.webm'), Buffer.from(audio)); } catch {}
-  const json = await groq('/audio/transcriptions', { method: 'POST', body: form });
+  const json = await groq(translate ? '/audio/translations' : '/audio/transcriptions', { method: 'POST', body: form });
   const text = (json.text || '').trim();
   try { fs.appendFileSync(path.join(dataDir, 'dictation-log.txt'), `${new Date().toISOString()}  ${JSON.stringify({ ...(meta || {}), lang: settings.language, model: settings.sttModel })}  heard: ${text}\n`); } catch {}
   // Whisper invents these on silence or noise.

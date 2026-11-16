@@ -57,6 +57,9 @@ interface TaskDao {
     @Query("SELECT * FROM tasks")
     suspend fun everything(): List<Task>
 
+    @Query("SELECT DISTINCT listName FROM tasks WHERE listName IS NOT NULL AND listName != ''")
+    suspend fun listNames(): List<String>
+
     @Query("SELECT * FROM tasks WHERE uid = :uid")
     suspend fun byUid(uid: String): Task?
 

@@ -25,6 +25,11 @@ class Prefs(ctx: Context) {
         get() = p.getString("language", "en") ?: "en"
         set(v) = p.edit().putString("language", v).apply()
 
+    /** large-v3 gets names right far more often ("Akshita", not "Akshitar"); turbo is a little faster. */
+    var sttModel: String
+        get() = p.getString("stt_model", "whisper-large-v3") ?: "whisper-large-v3"
+        set(v) = p.edit().putString("stt_model", v).apply()
+
     /** Names and terms Whisper should expect, comma separated. */
     var vocab: String
         get() = p.getString("vocab", "") ?: ""

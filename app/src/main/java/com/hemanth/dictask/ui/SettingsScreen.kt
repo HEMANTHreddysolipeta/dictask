@@ -87,12 +87,21 @@ fun SettingsScreen(prefs: Prefs, onBack: () -> Unit) {
                 supportingText = { Text("Your own free key. Audio is sent to Groq only while you dictate.") },
             )
             androidx.compose.material3.TextButton({ openGroqKeys(ctx) }) { Text("Get a free key at console.groq.com/keys") }
+            var model by remember { mutableStateOf(prefs.sttModel) }
+            Text("Speech recognition", style = MaterialTheme.typography.bodyMedium)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("whisper-large-v3" to "Most accurate (best for names)", "whisper-large-v3-turbo" to "Fastest").forEach { (m, l) ->
+                    FilterChip(model == m, { model = m; prefs.sttModel = m }, { Text(l) })
+                }
+            }
             Text("Spoken language", style = MaterialTheme.typography.bodyMedium)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("en" to "English", "" to "Auto-detect", "hi" to "Hindi", "te" to "Telugu").forEach { (code, name) ->
+                listOf("en" to "English", "te" to "Telugu / Tenglish", "hi" to "Hindi / Hinglish", "" to "Any language").forEach { (code, name) ->
                     FilterChip(lang == code, { lang = code; prefs.language = code }, { Text(name) })
                 }
             }
+            if (lang != "en") Text("Speak in any mix of languages; tasks are saved in English.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             var vocab by remember { mutableStateOf(prefs.vocab) }
             OutlinedTextField(
                 vocab, { vocab = it; prefs.vocab = it }, Modifier.fillMaxWidth(),
@@ -171,9 +180,28 @@ private fun SyncSection() {
     var pass by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf<String?>(null) }
+    var info by remember { mutableStateOf<String?>(null) }
+
+    fun reset() {
+        if (typed.isBlank()) { msg = "Type your email above first, then tap Forgot password."; info = null; return }
+        busy = true; msg = null; info = null
+        scope.launch {
+            runCatching { Sync.resetPassword(typed) }
+                .onSuccess { info = "If ${typed.trim()} has a Dictask account, a link to set a new password is on its way. Check spam too." }
+                .onFailure { e ->
+                    val m = e.message.orEmpty()
+                    msg = when {
+                        "badly formatted" in m || "INVALID_EMAIL" in m -> "That email address doesn't look right."
+                        "network" in m.lowercase() -> "No internet. Try again when you're online."
+                        else -> m.ifBlank { "Couldn't send the reset email." }
+                    }
+                }
+            busy = false
+        }
+    }
 
     fun go(create: Boolean) {
-        busy = true; msg = null
+        busy = true; msg = null; info = null
         scope.launch {
             runCatching { Sync.signIn(ctx, typed, pass, create) }
                 .onSuccess { email = Sync.email; pass = "" }
@@ -181,7 +209,7 @@ private fun SyncSection() {
                     val m = e.message.orEmpty()
                     msg = when {
                         "password is invalid" in m || "credential" in m.lowercase() ->
-                            "Wrong email or password. New here? Tap Create account."
+                            "Wrong email or password. Forgot it? Tap Forgot password. New here? Tap Create account."
                         "already in use" in m -> "That email already has an account. Tap Sign in."
                         "at least 6" in m || "WEAK_PASSWORD" in m -> "Use a password of at least 6 characters."
                         "network" in m.lowercase() -> "No internet. Try again when you're online."
@@ -206,9 +234,11 @@ private fun SyncSection() {
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
         msg?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        info?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall) }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button({ go(false) }, enabled = !busy && typed.isNotBlank() && pass.isNotBlank()) { Text("Sign in") }
             OutlinedButton({ go(true) }, enabled = !busy && typed.isNotBlank() && pass.length >= 6) { Text("Create account") }
         }
+        androidx.compose.material3.TextButton({ reset() }, enabled = !busy) { Text("Forgot password?") }
     }
 }

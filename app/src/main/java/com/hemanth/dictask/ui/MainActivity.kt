@@ -37,7 +37,7 @@ class MainVm(app: Application) : AndroidViewModel(app) {
 
     /** Typed quick-add goes through the same parser as dictation, so "pay rent friday" gets a date. */
     fun quickAdd(text: String, onResult: (String) -> Unit) = viewModelScope.launch {
-        val drafts = runCatching { Groq.parse(text, prefs.groqKey, repo.pending()) }.getOrNull()
+        val drafts = runCatching { Groq.parse(text, prefs.groqKey, repo.pending(), allLists = repo.listNames()) }.getOrNull()
         if (drafts.isNullOrEmpty()) {
             repo.add(Task(title = text.trim().replaceFirstChar { it.uppercase() }))
             onResult(if (drafts == null) "Added (offline, no date detected)" else "Added")

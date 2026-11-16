@@ -76,15 +76,20 @@ data class Draft(
 
     fun toTask(spoken: String, defaultRemind: Int): Task {
         val rec = recurrence ?: Recurrence.NONE
+        val day = resolvedDate(rec)
+        var tm = resolvedTime()
+        // "Buy groceries tonight" said at 10:30 pm: the model's 8 pm is already gone, so it would be born overdue.
+        // Keep it on today without a time instead.
+        if (rec == Recurrence.NONE && day == LocalDate.now() && tm != null && !tm.isAfter(LocalTime.now())) tm = null
         return Task(
             title = title,
             notes = notes,
-            dueEpochDay = resolvedDate(rec)?.toEpochDay(),
-            dueMinute = resolvedTime()?.let { it.hour * 60 + it.minute },
+            dueEpochDay = day?.toEpochDay(),
+            dueMinute = tm?.let { it.hour * 60 + it.minute },
             priority = priority ?: Priority.NONE,
             listName = list,
             recurrence = rec,
-            remindBefore = if (time == null) null else remindBefore ?: defaultRemind.takeIf { it >= 0 },
+            remindBefore = if (tm == null) null else remindBefore ?: defaultRemind.takeIf { it >= 0 },
             spokenText = spoken,
         )
     }
@@ -148,15 +153,19 @@ object Groq {
         val words = vocab.map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString(", ").take(500)
         val prompt = "To-do list: remind me to call, buy, pay, email, meeting tomorrow at 5 pm, next Monday." +
             if (words.isNotEmpty()) " Words I use: $words." else ""
+        // Telugu / Hindi / any other language: Whisper writes Indian languages down badly, but its translate mode
+        // turns the speech straight into English, which is what tasks are saved in. Free, like the rest.
+        // Translation only exists on large-v3 (not turbo) and takes no language hint.
+        val translate = language != "en"
         val body = MultipartBody.Builder().setType(MultipartBody.FORM)
-            .addFormDataPart("model", model)
+            .addFormDataPart("model", if (translate) "whisper-large-v3" else model)
             .addFormDataPart("response_format", "json")
             .addFormDataPart("temperature", "0")
             .addFormDataPart("prompt", prompt)
-            .apply { if (language.isNotBlank()) addFormDataPart("language", language) }
+            .apply { if (!translate) addFormDataPart("language", language) }
             .addFormDataPart("file", file.name, file.asRequestBody("audio/wav".toMediaType()))
             .build()
-        val json = call(Request.Builder().url("$BASE/audio/transcriptions").post(body), key)
+        val json = call(Request.Builder().url("$BASE/audio/" + if (translate) "translations" else "transcriptions").post(body), key)
         val text = json.optString("text").trim()
         // Whisper invents these on silence or noise (Groq's no_speech_prob stays 0, so it can't be used).
         val norm = text.lowercase().trim(' ', '.', '!', ',')
@@ -187,8 +196,11 @@ object Groq {
         key: String,
         openTasks: List<Task>,
         now: LocalDateTime = LocalDateTime.now(),
+        /** Every list name you have, including lists whose tasks are all done. */
+        allLists: List<String> = emptyList(),
     ): List<Draft> = withContext(Dispatchers.IO) {
-        val knownLists = openTasks.mapNotNull { it.listName }.distinct()
+        val knownLists = (openTasks.mapNotNull { it.listName } + allLists).map(::cleanList).filter { it.isNotEmpty() }
+            .distinctBy(::listKey)
         val day = now.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH)
         // Models get weekday arithmetic wrong, so hand them a ready-made calendar to look dates up in.
         val calendar = (0..13).joinToString("\n") { i ->
@@ -221,7 +233,7 @@ fields:
 - notes: extra details, else "".
 - due_date YYYY-MM-DD, due_time HH:mm 24h, null if not said (update: null = keep). morning 09:00, afternoon 14:00, evening 18:00, tonight 20:00. Times without am/pm = next occurrence after Now (at 17:21 "9.30" = 21:30). "9.30 or 10" = first one. "by X" = due X. "this month" = last day of month.
 - priority: high only for the task called urgent/important/asap; never copy it to other items. add default none; others default keep.
-- list: only if the user names one, else null.
+- list: only if the user names one; if it matches a name under Lists, copy that exact name (no #, no word "list"), else null.
 - recurrence: only if repeating was said; add default none, others keep. Repeating with a start ("1st of every month") → due_date = next such day.
 - remind_minutes_before: 0 for "remind me" at a time, N for "N min before", else null.
 - Each item keeps its own date/time. Ignore filler, false starts; later corrections win.
@@ -294,12 +306,12 @@ fields:
                 priority = if (pr == "keep") null else Priority.parse(pr),
                 list = o.optStringOrNull("list")?.trim()
                     ?.takeIf { it.isNotEmpty() && it.lowercase() !in setOf("keep", "none", "null", "unchanged") }
-                    ?.let { l -> knownLists.firstOrNull { it.equals(l, ignoreCase = true) } ?: l.replaceFirstChar { it.uppercase() } },
+                    ?.let { l -> matchList(l, knownLists) },
                 recurrence = if (rc == "keep") null else Recurrence.parse(rc),
                 remindBefore = if (o.isNull("remind_minutes_before")) null else o.optInt("remind_minutes_before"),
             )
         }
-        guardPriorities(text, repairEdits(parsed, openTasks))
+        dedupeAdds(guardPriorities(text, repairEdits(parsed, openTasks)))
             .map { d -> d.time?.let { d.copy(amSaid = saidAm(text, it.hour)) } ?: d }
     }
 
@@ -352,6 +364,29 @@ fields:
         }
     }
 
+    /**
+     * Names in your own tasks ("Call Akshita Reddy", "Email Ravi") are the words Whisper most often gets wrong,
+     * so they go into its hint list automatically: capitalised words that aren't the first word of a title.
+     */
+    fun namesIn(titles: List<String>): List<String> = titles.flatMap { t ->
+        t.split(Regex("\\s+")).drop(1).map { it.trim(',', '.', '!', '?', ':', ';', '\'', '"') }
+            .filter { it.length >= 3 && it[0].isUpperCase() && it.any(Char::isLowerCase) }
+    }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.map { it.key }.take(40)
+
+    /** "#PGP", "PGP list", "the pgp" → "PGP": what a spoken or model-written list name really is. */
+    fun cleanList(s: String): String = s.trim().trimStart('#').trim()
+        .replace(Regex("^(the|my)\\s+", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("\\s+lists?$", RegexOption.IGNORE_CASE), "").trim()
+
+    private fun listKey(s: String) = cleanList(s).lowercase().filter(Char::isLetterOrDigit)
+
+    /** "#PGP", "pgp", "P.G.P." all land in your existing "PGP" list; only a genuinely new name makes a new list. */
+    fun matchList(said: String, known: List<String>): String? {
+        val k = listKey(said)
+        if (k.isEmpty()) return null
+        return known.firstOrNull { listKey(it) == k } ?: cleanList(said).replaceFirstChar { it.uppercase() }
+    }
+
     private val editVerb = Regex("^(change|move|reschedule|postpone|update|edit|shift|push|rename|make)\\b", RegexOption.IGNORE_CASE)
     private val stop = setOf("the", "a", "an", "to", "for", "of", "my", "and", "with", "on", "in", "at", "it", "task", "one", "that", "this")
 
@@ -379,6 +414,18 @@ fields:
      * often comes back as two new tasks. The first becomes an edit of the matching open task and takes the
      * date/time from the fragment right after it.
      */
+    /**
+     * "Call Akshita Reddy. Call Akshita Reddy tomorrow at 10" is one task said twice (people restart sentences).
+     * New tasks with the same title collapse into one, keeping the copy that has the most details.
+     */
+    private fun dedupeAdds(drafts: List<Draft>): List<Draft> {
+        fun key(d: Draft) = d.title.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
+        fun detail(d: Draft) = listOf(d.date, d.time, d.recurrence, d.remindBefore, d.list).count { it != null } + d.notes.length.coerceAtMost(1)
+        val best = drafts.filter { it.kind == Kind.ADD }.groupBy(::key).mapValues { (_, g) -> g.maxBy(::detail) }
+        val seen = HashSet<String>()
+        return drafts.filter { d -> d.kind != Kind.ADD || (best[key(d)] === d && seen.add(key(d))) }
+    }
+
     private fun repairEdits(drafts: List<Draft>, open: List<Task>): List<Draft> {
         val out = mutableListOf<Draft>()
         var i = 0

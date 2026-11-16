@@ -1,7 +1,7 @@
 // Cloud task list shared with the phone: users/{account}/tasks/{uid}. Firestore keeps an offline copy,
 // so the widget still shows tasks without internet and edits are sent when it comes back.
 import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as fbSignOut } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut as fbSignOut } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch } from 'firebase/firestore';
 import { blankTask, newUid, nextOf, firstNotPast, today, draftToTask, applyDraft, summary } from './logic.js';
 
@@ -47,10 +47,12 @@ export async function signIn(email, password, create) {
   else await signInWithEmailAndPassword(auth, email.trim(), password);
 }
 export const signOut = () => fbSignOut(auth);
+/** Emails a link to set a new password (Firebase sends it and hosts the reset page). */
+export const resetPassword = (email) => sendPasswordResetEmail(auth, email.trim());
 
 export function authMessage(e) {
   const c = e?.code || '';
-  if (c.includes('invalid-credential') || c.includes('wrong-password') || c.includes('user-not-found')) return 'Wrong email or password. New here? Click Create account.';
+  if (c.includes('invalid-credential') || c.includes('wrong-password') || c.includes('user-not-found')) return 'Wrong email or password. Forgot it? Click Forgot password. New here? Click Create account.';
   if (c.includes('email-already-in-use')) return 'That email already has an account. Click Sign in.';
   if (c.includes('weak-password')) return 'Use a password of at least 6 characters.';
   if (c.includes('invalid-email')) return "That email address doesn't look right.";

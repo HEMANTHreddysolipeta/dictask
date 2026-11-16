@@ -143,13 +143,37 @@ function resolvedDate(d, rec) {
 
 export function draftToTask(d, spoken, defaultRemind) {
   const rec = d.recurrence || 'NONE';
+  const day = resolvedDate(d, rec);
+  let tm = resolvedTime(d);
+  // "Buy groceries tonight" said at 10:30 pm: the model's 8 pm is already gone, so keep it on today without a time.
+  if (rec === 'NONE' && day === today() && tm != null && tm <= nowMinute()) tm = null;
   return blankTask({
     title: d.title, notes: d.notes || '',
-    dueEpochDay: resolvedDate(d, rec), dueMinute: resolvedTime(d),
+    dueEpochDay: day, dueMinute: tm,
     priority: d.priority ?? 0, listName: d.list || null, recurrence: rec,
-    remindBefore: d.time == null ? null : d.remindBefore ?? (defaultRemind >= 0 ? defaultRemind : null),
+    remindBefore: tm == null ? null : d.remindBefore ?? (defaultRemind >= 0 ? defaultRemind : null),
     spokenText: spoken,
   });
+}
+
+/** Names in your own tasks go into Whisper's hint list (same as the phone's Groq.namesIn). */
+export function namesIn(titles) {
+  const count = new Map();
+  for (const t of titles) for (const w of t.split(/\s+/).slice(1)) {
+    const x = w.replace(/^[,.!?:;'"]+|[,.!?:;'"]+$/g, '');
+    if (x.length >= 3 && x[0] === x[0].toUpperCase() && x[0] !== x[0].toLowerCase() && /[a-z]/.test(x)) count.set(x, (count.get(x) || 0) + 1);
+  }
+  return [...count].sort((a, b) => b[1] - a[1]).map(([w]) => w).slice(0, 40);
+}
+
+/** One task said twice in one go ("Call Akshita. Call Akshita tomorrow at 10") becomes one, keeping the fuller copy. */
+function dedupeAdds(drafts) {
+  const key = (d) => d.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const detail = (d) => [d.date, d.time, d.recurrence, d.remindBefore, d.list].filter((v) => v != null).length + (d.notes ? 1 : 0);
+  const best = new Map();
+  for (const d of drafts) if (d.kind === 'ADD') { const k = key(d), b = best.get(k); if (!b || detail(d) > detail(b)) best.set(k, d); }
+  const seen = new Set();
+  return drafts.filter((d) => d.kind !== 'ADD' || (best.get(key(d)) === d && !seen.has(key(d)) && seen.add(key(d))));
 }
 
 export function applyDraft(d, t, defaultRemind) {
@@ -174,9 +198,20 @@ export function applyDraft(d, t, defaultRemind) {
 
 // ---- the parse request: identical prompt and schema to the phone ----
 
+/** "#PGP", "PGP list", "the pgp" → "PGP" (same as the phone's Groq.cleanList). */
+export const cleanList = (s) => String(s || '').trim().replace(/^#+/, '').trim().replace(/^(the|my)\s+/i, '').replace(/\s+lists?$/i, '').trim();
+const listKey = (s) => cleanList(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+/** "#PGP", "pgp", "P.G.P." land in your existing "PGP" list; only a genuinely new name makes a new list. */
+export function matchList(said, known) {
+  const k = listKey(said);
+  if (!k) return null;
+  return known.find((l) => listKey(l) === k) || cap(cleanList(said));
+}
+
 /** @param open open tasks; each gets a short number for the model to point at. */
-export function buildParseRequest(text, open, now = new Date()) {
-  const lists = [...new Set(open.map((t) => t.listName).filter(Boolean))];
+export function buildParseRequest(text, open, now = new Date(), allLists = []) {
+  const lists = [];
+  for (const l of [...open.map((t) => t.listName), ...allLists].filter(Boolean).map(cleanList)) if (l && !lists.some((x) => listKey(x) === listKey(l))) lists.push(l);
   const td = epochOf(now);
   const calendar = Array.from({ length: 14 }, (_, i) => {
     const d = td + i, wd = WD_SHORT[weekday(d)];
@@ -207,7 +242,7 @@ fields:
 - notes: extra details, else "".
 - due_date YYYY-MM-DD, due_time HH:mm 24h, null if not said (update: null = keep). morning 09:00, afternoon 14:00, evening 18:00, tonight 20:00. Times without am/pm = next occurrence after Now (at 17:21 "9.30" = 21:30). "9.30 or 10" = first one. "by X" = due X. "this month" = last day of month.
 - priority: high only for the task called urgent/important/asap; never copy it to other items. add default none; others default keep.
-- list: only if the user names one, else null.
+- list: only if the user names one; if it matches a name under Lists, copy that exact name (no #, no word "list"), else null.
 - recurrence: only if repeating was said; add default none, others keep. Repeating with a start ("1st of every month") → due_date = next such day.
 - remind_minutes_before: 0 for "remind me" at a time, N for "N min before", else null.
 - Each item keeps its own date/time. Ignore filler, false starts; later corrections win.`;
@@ -247,7 +282,7 @@ export function readDrafts(content, ids, lists, open, text = '') {
     if (kind === 'ADD' && !title) continue;
     let list = str(o.list);
     if (list && ['keep', 'none', 'null', 'unchanged'].includes(list.toLowerCase())) list = null;
-    if (list) list = lists.find((l) => l.toLowerCase() === list.toLowerCase()) || cap(list);
+    if (list) list = matchList(list, lists);
     out.push({
       kind, target: kind === 'ADD' ? null : target, title: cap(title), notes: (o.notes || '').trim(),
       date: parseIso(str(o.due_date)), time: parseHm(str(o.due_time)),
@@ -256,7 +291,7 @@ export function readDrafts(content, ids, lists, open, text = '') {
       remindBefore: o.remind_minutes_before == null ? null : o.remind_minutes_before | 0,
     });
   }
-  return guardPriorities(text, repairEdits(out, open))
+  return dedupeAdds(guardPriorities(text, repairEdits(out, open)))
     .map((d) => (d.time != null ? { ...d, amSaid: saidAm(text, Math.floor(d.time / 60)) } : d));
 }
 

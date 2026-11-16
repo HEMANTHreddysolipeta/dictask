@@ -131,6 +131,11 @@ object Sync {
         pullOnce(ctx)
     }
 
+    /** Emails a link to set a new password (Firebase sends it; the link opens Firebase's own reset page). */
+    suspend fun resetPassword(email: String) {
+        auth.sendPasswordResetEmail(email.trim()).await()
+    }
+
     suspend fun signOut(ctx: Context) {
         stop()
         auth.signOut()

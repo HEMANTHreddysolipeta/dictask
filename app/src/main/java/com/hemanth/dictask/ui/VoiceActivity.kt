@@ -190,20 +190,30 @@ class VoiceActivity : ComponentActivity() {
     private fun transcribe(f: File) {
         state = VoiceState.Working("Transcribing…")
         lifecycleScope.launch {
-            val vocab = prefs.vocab.split(',', '\n') + repo.pending().mapNotNull { it.listName }
-            val text = runCatching { Groq.transcribe(f, prefs.groqKey, prefs.language, vocab) }
-                .getOrElse { state = VoiceState.Failed(it.message ?: "Transcription failed"); return@launch }
+            val open = repo.pending()
+            val vocab = prefs.vocab.split(',', '\n') + open.mapNotNull { it.listName } + Groq.namesIn(open.map { it.title })
+            val text = runCatching { Groq.transcribe(f, prefs.groqKey, prefs.language, vocab, prefs.sttModel) }
+                .getOrElse { state = VoiceState.Failed(it.message ?: "Transcription failed"); logDictation(f, "error: ${it.message}"); return@launch }
+            logDictation(f, "heard: $text")
             if (text.isBlank()) { state = VoiceState.Failed("Didn't catch any words. Try again a little louder or closer."); return@launch }
             Log.d("Dictask", "heard: $text")
             understand(text)
         }
     }
 
+    /** Last recording + a short log, so a misheard dictation can be checked afterwards (kept on the phone only). */
+    private fun logDictation(f: File, line: String) = runCatching {
+        f.copyTo(File(filesDir, "last-dictation.wav"), overwrite = true)
+        val log = File(filesDir, "dictation-log.txt")
+        val kept = if (log.exists()) log.readLines().takeLast(199) else emptyList()
+        log.writeText((kept + "${java.time.LocalDateTime.now().withNano(0)}  ${prefs.sttModel}  ${prefs.language.ifBlank { "auto" }}  $line").joinToString("\n", postfix = "\n"))
+    }
+
     private fun understand(text: String) {
         state = VoiceState.Working("Finding your tasks…", text)
         lifecycleScope.launch {
             val open = repo.pending()
-            val drafts = runCatching { Groq.parse(text, prefs.groqKey, open) }.getOrElse {
+            val drafts = runCatching { Groq.parse(text, prefs.groqKey, open, allLists = repo.listNames()) }.getOrElse {
                 // Words are safe even if the parser failed: offer to save them as-is.
                 state = VoiceState.Failed(it.message ?: "Couldn't read tasks from that", text); return@launch
             }

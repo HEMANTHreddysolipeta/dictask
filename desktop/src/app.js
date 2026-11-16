@@ -21,7 +21,7 @@ const icon = (n) => `<svg class="icon" viewBox="0 0 24 24" fill="currentColor">$
 let settings = {};
 let hotkey = 'Ctrl+Shift+Space';
 let peekKey = 'Ctrl+Alt+Space';
-const ui = { tab: 'today', list: null, search: '', selected: null, view: 'tasks', voice: null, toast: null, authMsg: '', busy: false };
+const ui = { tab: 'today', list: null, search: '', selected: null, view: 'tasks', voice: null, toast: null, authMsg: '', authInfo: '', busy: false };
 
 // ---------------------------------------------------------------- rendering helpers
 
@@ -61,8 +61,10 @@ function signInHtml(compact) {
     <input name="email" type="email" placeholder="Email" autocomplete="username" required>
     <input name="password" type="password" placeholder="Password (6+ characters)" autocomplete="current-password" required>
     ${ui.authMsg ? `<div class="error">${esc(ui.authMsg)}</div>` : ''}
+    ${ui.authInfo ? `<div class="muted small">${esc(ui.authInfo)}</div>` : ''}
     <div style="display:flex;gap:8px"><button class="btn" data-act="signin" ${ui.busy ? 'disabled' : ''}>Sign in</button>
     <button class="btn ghost" type="button" data-act="create" ${ui.busy ? 'disabled' : ''}>Create account</button></div>
+    <a href="#" class="small" data-act="forgot">Forgot password?</a>
   </form>`;
 }
 
@@ -217,7 +219,8 @@ function settingsHtml() {
     <div>Speech recognition</div>
     <div class="chips">${chip('sttModel', 'whisper-large-v3', 'Most accurate (best for names)')}${chip('sttModel', 'whisper-large-v3-turbo', 'Fastest')}</div>
     <div>Spoken language</div>
-    <div class="chips">${chip('language', 'en', 'English')}${chip('language', '', 'Auto-detect')}${chip('language', 'hi', 'Hindi')}${chip('language', 'te', 'Telugu')}</div>
+    <div class="chips">${chip('language', 'en', 'English')}${chip('language', 'te', 'Telugu / Tenglish')}${chip('language', 'hi', 'Hindi / Hinglish')}${chip('language', '', 'Any language')}</div>
+    ${settings.language !== 'en' ? '<div class="muted small">Speak in any mix of languages; tasks are saved in English.</div>' : ''}
     <label>Words Whisper should know<br><textarea style="width:100%" rows="2" data-setinput="vocab" placeholder="Adi, Anna, pitch deck, sales call flow">${esc(settings.vocab)}</textarea></label>
     <label>Microphone<br><select style="width:100%" data-micselect>${micOptions()}</select></label>
     <div class="opt"><span class="muted small" id="mic-test-label">Speak to check the level</span><button class="btn ghost" data-act="mictest">${micTest ? 'Stop test' : 'Test mic'}</button></div>
@@ -360,7 +363,7 @@ async function startDictation() {
   ui.voice = { state: 'working', label: 'Writing it down…' }; render();
   let heard;
   try {
-    const vocab = settings.vocab.split(/[,\n]/).concat(S.open().map((t) => t.listName).filter(Boolean));
+    const vocab = settings.vocab.split(/[,\n]/).concat(S.open().map((t) => t.listName).filter(Boolean), L.namesIn(S.open().map((t) => t.title)));
     heard = await api.transcribe(r.audio, r.mime, vocab, r.meta);
   } catch (e) { ui.voice = { state: 'failed', msg: e.message }; return render(); }
   if (!heard) { ui.voice = { state: 'failed', msg: "Didn't catch any words. Try again a bit louder." }; return render(); }
@@ -383,7 +386,7 @@ async function understand(heard) {
 
 async function parse(text) {
   const open = L.sortTasks(S.open());
-  const { body, ids, lists } = L.buildParseRequest(text, open);
+  const { body, ids, lists } = L.buildParseRequest(text, open, new Date(), S.tasks.map((t) => t.listName));
   const content = await api.parse(body);
   return L.readDrafts(content, ids, lists, open, text);
 }
@@ -429,14 +432,29 @@ root.addEventListener('click', async (e) => {
     case 'signout': await S.signOut(); break;
     case 'mictest': toggleMicTest(); break;
     case 'create': submitSignIn(el.closest('form'), true); break;
+    case 'forgot': e.preventDefault(); resetPassword(el.closest('form')); break;
     case 'openkeys': e.preventDefault(); api.openKeys(); break;
   }
 });
 
+async function resetPassword(form) {
+  const email = form.email.value.trim();
+  ui.authInfo = '';
+  if (!email) { ui.authMsg = 'Type your email first, then click Forgot password.'; return render(); }
+  ui.busy = true; ui.authMsg = ''; render();
+  try {
+    await S.resetPassword(email);
+    ui.authInfo = `If ${email} has a Dictask account, a link to set a new password is on its way. Check spam too.`;
+  } catch (err) { ui.authMsg = S.authMessage(err); }
+  ui.busy = false; render();
+  const f = document.querySelector('[data-form=signin]');
+  if (f) f.email.value = email;
+}
+
 async function submitSignIn(form, create) {
   const email = form.email.value, password = form.password.value;
   if (!email || !password) { ui.authMsg = 'Enter your email and password.'; return render(); }
-  ui.busy = true; ui.authMsg = ''; render();
+  ui.busy = true; ui.authMsg = ''; ui.authInfo = ''; render();
   try { await S.signIn(email, password, create); } catch (err) { ui.authMsg = S.authMessage(err); }
   ui.busy = false; render();
   const f = document.querySelector('[data-form=signin]');
@@ -588,6 +606,17 @@ function setupClickThrough() {
   api.on('open', (extra) => { const p = new URLSearchParams(extra); if (p.get('task')) { ui.selected = p.get('task'); ui.view = 'tasks'; ui.tab = 'all'; render(); } });
   if (params.get('task')) { ui.selected = params.get('task'); ui.tab = 'all'; }
   S.subscribe(render);
+  // One-time tidy-up: lists created as "#PGP" or "PGP list" by mistake go back into the real "PGP" list.
+  if (MODE === 'widget') {
+    let tidied = false;
+    S.subscribe(() => {
+      if (tidied || !S.ready) return;
+      tidied = true;
+      const bad = (n) => n && (n !== L.cleanList(n));
+      const good = [...new Set(S.tasks.map((t) => t.listName).filter((n) => n && !bad(n)))];
+      for (const t of S.tasks) if (bad(t.listName)) S.save({ ...t, listName: L.matchList(t.listName, good) });
+    });
+  }
   render();
   setInterval(render, 60000); // "Today", overdue colours move on as time passes
   if (MODE === 'widget') { startReminders(); refreshMics(); }
